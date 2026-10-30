@@ -8,6 +8,8 @@ use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::path::Path;
 
+pub mod oodle;
+
 pub const MIC_CLASS: u64 = 0x7f7253ab5570e48f; // FPackageObjectIndex of /Script/Engine.MaterialInstanceConstant
 pub const STRUCT: &str = "MaterialInstanceBasePropertyOverrides";
 pub const INSERT_AT: u32 = 40;
@@ -315,16 +317,21 @@ pub fn parse_toc(raw: Vec<u8>) -> Result<Toc, String> {
     Ok(Toc { raw, header_size: hdr, ver, flags, cbs, ids, offlen, blocks, methods_off, methods_len, dir_off, dir_len, meta_off: o })
 }
 
-/// Write a container unencrypted. Unchanged chunks keep their original (decrypted) blocks, so they
-/// stay compressed; changed chunks are stored uncompressed. Only offsets, lengths, the block list
-/// and the per-chunk meta change; ids and hash seeds are kept.
+/// Write a container unencrypted. Unchanged chunks keep their original (decrypted) blocks; changed
+/// chunks are Oodle-compressed with our own encoder when the container already uses Oodle, and
+/// stored uncompressed otherwise. Only offsets, lengths, the block list and the per-chunk meta
+/// change; ids and hash seeds are kept.
 pub fn write_container(toc: &Toc, chunks: &[Vec<u8>], changed: &[bool],
-                       read: &mut dyn FnMut(u64, usize) -> Result<Vec<u8>, String>) -> Result<(Vec<u8>, Vec<u8>), String> {
+                       read: &mut dyn FnMut(u64, usize) -> Result<Vec<u8>, String>,
+                       decompress: &mut dyn FnMut(&[u8], usize) -> Result<Vec<u8>, String>) -> Result<(Vec<u8>, Vec<u8>), String> {
     let cbs = toc.cbs as u64;
     let mut ucas = Vec::new();
     let mut blocks: Vec<(u64, u32, u32, u8)> = Vec::new();
     let mut offlen: Vec<(u64, u64)> = Vec::new();
     let mut meta = Vec::new();
+    let names = &toc.raw[toc.methods_off..toc.methods_off + toc.methods_len];
+    let name_len = u32::from_le_bytes(toc.raw[40..44].try_into().unwrap()) as usize;
+    let oodle = if name_len == 0 { None } else { names.chunks(name_len).position(|m| m.starts_with(b"Oodle\0")).map(|i| i as u8 + 1) };
     for (i, c) in chunks.iter().enumerate() {
         let voff = blocks.len() as u64 * cbs;
         offlen.push((voff, c.len() as u64));
@@ -339,8 +346,16 @@ pub fn write_container(toc: &Toc, chunks: &[Vec<u8>], changed: &[bool],
         } else {
             for part in c.chunks(toc.cbs) {
                 while ucas.len() % 16 != 0 { ucas.push(0); }
-                blocks.push((ucas.len() as u64, part.len() as u32, part.len() as u32, 0));
-                ucas.extend_from_slice(part);
+                // Only keep a compressed block that decompresses back to the input.
+                let packed = oodle.and_then(|m| oodle::compress(part).map(|z| (m, z)))
+                    .filter(|(_, z)| decompress(z, part.len()).is_ok_and(|d| d == part));
+                if let Some((m, z)) = packed {
+                    blocks.push((ucas.len() as u64, z.len() as u32, part.len() as u32, m));
+                    ucas.extend_from_slice(&z);
+                } else {
+                    blocks.push((ucas.len() as u64, part.len() as u32, part.len() as u32, 0));
+                    ucas.extend_from_slice(part);
+                }
             }
         }
         let old_meta = &toc.raw[toc.meta_off + i * 33..toc.meta_off + i * 33 + 33];
@@ -440,7 +455,7 @@ pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
         chunks.push(data);
     }
     if (fixed == 0 && !encrypted) || check_only || !problems.is_empty() { return Ok(ModResult { materials, fixed, problems, utoc: Vec::new(), ucas: Vec::new() }); }
-    let (u, c) = write_container(toc, &chunks, &changed, &mut read)?;
+    let (u, c) = write_container(toc, &chunks, &changed, &mut read, decompress)?;
     Ok(ModResult { materials, fixed, problems, utoc: u, ucas: c })
 }
 
