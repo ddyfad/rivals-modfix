@@ -151,7 +151,6 @@ async function check(entries) {
     if (!mod.ucas) { mod.state = 'err'; mod.text = 'The .ucas file is missing'; continue; }
     const utoc = await mod.utoc.arrayBuffer();
     if (utoc.byteLength < 144 || new DataView(utoc).getUint32(0, true) !== 0x2D3D3D2D) { mod.state = 'err'; mod.text = 'Not a readable .utoc'; continue; }
-    if (new DataView(utoc).getUint8(80) & 2) { mod.state = 'skip'; mod.text = 'Encrypted pack, can\'t be checked'; continue; }
     try {
       const r = await runModfix(utoc, await mod.ucas.arrayBuffer(), mod.utoc.lastModified, true);
       if (r.error) { mod.state = 'err'; mod.text = r.error; }
