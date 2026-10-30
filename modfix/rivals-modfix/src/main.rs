@@ -83,8 +83,13 @@ fn main() {
         let res = match process_mod(&toc, &ucas, assume_old, check, &mut dec) { Ok(r) => r, Err(e) => { println!("SKIP  {name}: {e}"); n_skip += 1; continue; } };
         let (fixed, materials) = (res.fixed, res.materials);
         if !res.problems.is_empty() { println!("SKIP  {name}: {} material(s) could not be read safely ({})", res.problems.len(), res.problems[0]); n_skip += 1; continue; }
-        if fixed == 0 { println!("ok    {name}: {}", if materials == 0 { "no material instances, nothing to do".to_string() } else { format!("{materials} material instance(s) already in the current layout") }); n_ok += 1; continue; }
-        if check { println!("STALE {name}: {fixed} of {materials} material instance(s) still in the old layout"); n_fixed += 1; continue; }
+        let encrypted = toc.flags & 2 != 0;
+        if fixed == 0 && !encrypted { println!("ok    {name}: {}", if materials == 0 { "no material instances, nothing to do".to_string() } else { format!("{materials} material instance(s) already in the current layout") }); n_ok += 1; continue; }
+        if check {
+            if fixed == 0 { println!("ENC   {name}: encrypted, would be decrypted"); }
+            else { println!("STALE {name}: {fixed} of {materials} material instance(s) still in the old layout{}", if encrypted { ", encrypted" } else { "" }); }
+            n_fixed += 1; continue;
+        }
         let mut failed = false;
         let _ = fs::create_dir_all(&backup);
         for ext in ["utoc", "ucas", "pak"] {
@@ -93,7 +98,11 @@ fn main() {
         }
         if failed { n_skip += 1; continue; }
         match fs::write(utoc, &res.utoc).and_then(|_| fs::write(&ucas_path, &res.ucas)).map_err(|e| e.to_string()) {
-            Ok(()) => { println!("FIXED {name}: {fixed} of {materials} material instance(s) ported to the new layout"); n_fixed += 1; }
+            Ok(()) => {
+                if fixed == 0 { println!("FIXED {name}: decrypted"); }
+                else { println!("FIXED {name}: {fixed} of {materials} material instance(s) ported to the new layout{}", if encrypted { ", decrypted" } else { "" }); }
+                n_fixed += 1;
+            }
             Err(e) => {
                 println!("SKIP  {name}: writing failed ({e}); restoring the original");
                 for ext in ["utoc", "ucas"] { let _ = fs::copy(backup.join(format!("{name}.{ext}")), utoc.with_extension(ext)); }

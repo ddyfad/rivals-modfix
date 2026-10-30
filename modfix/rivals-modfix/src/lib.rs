@@ -392,11 +392,19 @@ pub fn read_chunk(toc: &Toc, ci: usize, read: &mut dyn FnMut(u64, usize) -> Resu
 
 pub struct ModResult { pub materials: usize, pub fixed: usize, pub problems: Vec<String>, pub utoc: Vec<u8>, pub ucas: Vec<u8> }
 
-/// Check or fix one mod container held in memory. Returns the rewritten files only when something was fixed.
+/// Check or fix one mod container held in memory. Returns the rewritten files when something was
+/// fixed, and for every readable encrypted container so it ends up decrypted.
 pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
                    decompress: &mut dyn FnMut(&[u8], usize) -> Result<Vec<u8>, String>) -> Result<ModResult, String> {
     let (old, new) = load_schemas();
     let mut read = |o: u64, n: usize| -> Result<Vec<u8>, String> { ucas.get(o as usize..o as usize + n).map(|s| s.to_vec()).ok_or("ucas shorter than its TOC says".into()) };
+    let encrypted = toc.flags & 2 != 0;
+    if encrypted {
+        // AES has no integrity check, so make sure the container header decrypts to its signature.
+        let ci = toc.ids.iter().position(|id| id[11] == 6).ok_or("encrypted container without a container header")?;
+        let header = read_chunk(toc, ci, &mut read, decompress)?;
+        if !header.starts_with(b"nCoI") { return Err("encrypted with a key other than the game's".into()); }
+    }
     let mut chunks = Vec::with_capacity(toc.ids.len());
     let (mut fixed, mut materials, mut problems) = (0usize, 0usize, Vec::new());
     for ci in 0..toc.ids.len() {
@@ -411,7 +419,7 @@ pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
         }
         chunks.push(data);
     }
-    if fixed == 0 || check_only || !problems.is_empty() { return Ok(ModResult { materials, fixed, problems, utoc: Vec::new(), ucas: Vec::new() }); }
+    if (fixed == 0 && !encrypted) || check_only || !problems.is_empty() { return Ok(ModResult { materials, fixed, problems, utoc: Vec::new(), ucas: Vec::new() }); }
     let (u, c) = write_container(toc, &chunks)?;
     Ok(ModResult { materials, fixed, problems, utoc: u, ucas: c })
 }

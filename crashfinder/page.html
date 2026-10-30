@@ -151,9 +151,11 @@ async function check(entries) {
     const utoc = await mod.utoc.arrayBuffer();
     if (utoc.byteLength < 144 || new DataView(utoc).getUint32(0, true) !== 0x2D3D3D2D) { mod.state = 'err'; mod.text = 'Not a readable .utoc'; continue; }
     try {
+      const encrypted = new DataView(utoc).getUint8(80) & 2;
       const r = await runModfix(utoc, await mod.ucas.arrayBuffer(), mod.utoc.lastModified, true);
       if (r.error) { mod.state = 'err'; mod.text = r.error; }
-      else if (r.stale) { mod.state = 'need'; mod.text = `Needs fixing: ${r.stale} material${r.stale === 1 ? '' : 's'} in the old layout`; }
+      else if (r.stale) { mod.state = 'need'; mod.text = `Needs fixing: ${r.stale} material${r.stale === 1 ? '' : 's'} in the old layout${encrypted ? ', encrypted' : ''}`; }
+      else if (encrypted && !r.problem) { mod.state = 'need'; mod.text = 'Encrypted, will be decrypted'; }
       else if (r.materials) { mod.state = 'ok'; mod.text = 'Up to date'; }
       else { mod.state = 'ok'; mod.text = 'No materials, not affected'; }
       if (r.problem && mod.state !== 'err') mod.text += ` (${r.problem})`;
