@@ -15,8 +15,8 @@ few seconds after launch.
    with the reason printed. Originals of every rewritten mod are copied to
    `Paks\modfix-backup\` first. Delete that folder once the game runs.
 
-Run it with `--check` to only report, without changing anything. Encrypted packs (RivalsFPS)
-are skipped; RivalsFPS rebuilds those itself.
+Run it with `--check` to only report, without changing anything. Encrypted packs (RivalsFPS
+and others packed with the game's public AES key) are decrypted and written back unencrypted.
 
 ## What it does
 

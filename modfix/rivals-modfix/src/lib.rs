@@ -2,6 +2,7 @@
 //! unversioned-property walker. Used by the Windows exe (main.rs) and the WebAssembly build
 //! for the crash finder page (bottom of this file).
 
+use aes::cipher::{BlockDecrypt, KeyInit};
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
@@ -14,6 +15,15 @@ pub const INSERT_N: u32 = 2;
 /// Steam's "LastUpdated" for the Oct 30 2026 build; mod files older than this are assumed to be old-layout
 /// when a material reads cleanly both ways.
 pub const UPDATE_TIME: u64 = 1793311882;
+/// The game's public AES key. Encrypted mod containers use it with plain AES-256-ECB
+/// (NetEase's custom scheme only applies to legacy .pak files).
+const AES_KEY: [u8; 32] = [0x0C, 0x26, 0x3D, 0x8C, 0x22, 0xDC, 0xB0, 0x85, 0x89, 0x48, 0x99, 0xC3, 0xA3, 0x79, 0x63, 0x83,
+                           0xE9, 0xBF, 0x9D, 0xE0, 0xCB, 0xFB, 0x08, 0xC9, 0xBF, 0x2D, 0xEF, 0x2E, 0x84, 0xF2, 0x9D, 0x74];
+
+fn decrypt(buf: &mut [u8]) {
+    let c = aes::Aes256::new(&AES_KEY.into());
+    for b in buf.chunks_exact_mut(16) { c.decrypt_block(b.into()); }
+}
 
 // ---------------------------------------------------------------- schema
 #[derive(Deserialize, Clone)]
@@ -332,6 +342,7 @@ pub fn write_container(toc: &Toc, chunks: &[Vec<u8>]) -> Result<(Vec<u8>, Vec<u8
     let r = &toc.raw; let n = chunks.len();
     let mut out = Vec::new();
     out.extend_from_slice(&r[..toc.header_size]);
+    out[80] &= !2; // written back decrypted
     out[28..32].copy_from_slice(&(blocks.len() as u32).to_le_bytes());
     // chunk ids, then offset/length (5+5 bytes big endian), then everything up to the block list unchanged
     let ids_off = toc.header_size;
@@ -347,11 +358,22 @@ pub fn write_container(toc: &Toc, chunks: &[Vec<u8>]) -> Result<(Vec<u8>, Vec<u8
     let _ = p;
     out.extend_from_slice(&r[toc.methods_off..toc.methods_off + toc.methods_len]);
     if toc.flags & 4 != 0 { return Err("signed containers are not handled".into()); }
-    out.extend_from_slice(&r[toc.dir_off..toc.dir_off + toc.dir_len]);
+    let mut dir = r[toc.dir_off..toc.dir_off + toc.dir_len].to_vec();
+    // Some packers encrypt the directory index along with the data, others leave it plain.
+    // It starts with the mount point FString, so keep whichever copy reads as one.
+    if toc.flags & 2 != 0 && dir.len() % 16 == 0 && !starts_with_fstring(&dir) {
+        decrypt(&mut dir);
+        if !starts_with_fstring(&dir) { return Err("can't read the directory index".into()); }
+    }
+    out.extend_from_slice(&dir);
     out.extend_from_slice(&meta);
     Ok((out, ucas))
 }
 
+fn starts_with_fstring(b: &[u8]) -> bool {
+    let n = match b.get(..4) { Some(s) => i32::from_le_bytes(s.try_into().unwrap()), None => return false };
+    n > 0 && (n as usize) < b.len() - 4 && b[3 + n as usize] == 0
+}
 
 /// One chunk of a container, decompressed. `read(offset, len)` supplies raw bytes from the .ucas,
 /// `decompress(block, raw_len)` inflates an Oodle block.
@@ -363,8 +385,10 @@ pub fn read_chunk(toc: &Toc, ci: usize, read: &mut dyn FnMut(u64, usize) -> Resu
     let mut out = Vec::with_capacity(len as usize + toc.cbs);
     for bi in first..=last {
         let (boff, csz, usz, m) = *toc.blocks.get(bi).ok_or("block index out of range")?;
-        let buf = read(boff, csz as usize)?;
-        if m == 0 { out.extend_from_slice(&buf[..usz as usize]); } else { out.extend(decompress(&buf, usz as usize)?); }
+        let buf = if toc.flags & 2 != 0 {
+            let mut b = read(boff, (csz as usize + 15) & !15)?; decrypt(&mut b); b
+        } else { read(boff, csz as usize)? };
+        if m == 0 { out.extend_from_slice(&buf[..usz as usize]); } else { out.extend(decompress(&buf[..csz as usize], usz as usize)?); }
     }
     let s = (off % toc.cbs as u64) as usize;
     Ok(out[s..s + len as usize].to_vec())
@@ -375,7 +399,6 @@ pub struct ModResult { pub materials: usize, pub fixed: usize, pub problems: Vec
 /// Check or fix one mod container held in memory. Returns the rewritten files only when something was fixed.
 pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
                    decompress: &mut dyn FnMut(&[u8], usize) -> Result<Vec<u8>, String>) -> Result<ModResult, String> {
-    if toc.flags & 2 != 0 { return Err("encrypted container (RivalsFPS pack?), it has its own updater".into()); }
     let (old, new) = load_schemas();
     let mut read = |o: u64, n: usize| -> Result<Vec<u8>, String> { ucas.get(o as usize..o as usize + n).map(|s| s.to_vec()).ok_or("ucas shorter than its TOC says".into()) };
     let mut chunks = Vec::with_capacity(toc.ids.len());
