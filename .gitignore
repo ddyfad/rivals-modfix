@@ -1,0 +1,11 @@
+/*
+!/.gitignore
+!/modfix/
+!/crashfinder/
+*.bak*
+__pycache__/
+target/
+*.exe
+*.wasm
+/crashfinder/dist/
+/crashfinder/patch-files.txt

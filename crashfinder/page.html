@@ -1,0 +1,226 @@
+<title>Rivals Mod Fixer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eceff4; --surface: #ffffff; --ink: #141922; --muted: #5b6474; --line: #d3d9e3;
+  --accent: #b86200; --accent-ink: #ffffff; --accent-soft: #fbeedd;
+  --ok: #1d7a4a; --bad: #b3261e;
+  --display: "Chakra Petch", "Bahnschrift", "Segoe UI", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1117; --surface: #161a22; --ink: #e7eaf0; --muted: #98a1b1; --line: #2a303c;
+  --accent: #ffad33; --accent-ink: #1a1204; --accent-soft: #2e2312; --ok: #5cc98d; --bad: #ff7b72; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1117; --surface: #161a22; --ink: #e7eaf0; --muted: #98a1b1; --line: #2a303c;
+  --accent: #ffad33; --accent-ink: #1a1204; --accent-soft: #2e2312; --ok: #5cc98d; --bad: #ff7b72; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); }
+.wrap { max-width: 720px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 24px; }
+h1 { font-family: var(--display); font-size: clamp(28px, 6vw, 38px); line-height: 1.15; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 62ch; }
+code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+header { display: grid; gap: 10px; }
+header p, .note { color: var(--muted); }
+.note { font-size: 13px; }
+.tag { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: .06em; }
+
+.drop { display: grid; gap: 12px; justify-items: center; text-align: center; background: var(--surface);
+  border: 2px dashed var(--line); border-radius: 10px; padding: 32px 16px; transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { color: var(--muted); font-size: 14px; }
+
+button, .pick { font: 600 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+button:hover, .pick:hover { border-color: var(--accent); }
+button:focus-visible, .pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+.primary, .pick { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pick { font-size: 16px; padding: 10px 20px; }
+.pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.bar strong { font-family: var(--display); font-size: 20px; }
+ul.mods { list-style: none; margin: 0; padding: 0; }
+ul.mods li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+ul.mods .name { flex: 1; min-width: 0; display: grid; }
+ul.mods .name code { font-size: 14px; }
+ul.mods .st { font-size: 13px; color: var(--muted); }
+ul.mods .st.need { color: var(--accent); font-weight: 600; }
+ul.mods .st.ok { color: var(--ok); }
+ul.mods .st.err { color: var(--bad); }
+.status { font-size: 14px; color: var(--muted); }
+.status.err { color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="tag">MARVEL RIVALS · MOD FIXER</div>
+    <h1>Fix mods broken by the <span class="patchdate"></span> update</h1>
+    <p>The update changed how materials are stored, so skin and UI mods made before it crash the game. Pick your <code>~mods</code> folder, then fix the mods that need it.</p>
+  </header>
+
+  <div class="drop" id="drop">
+    <label class="pick">Select your ~mods folder<input type="file" id="folder" webkitdirectory multiple></label>
+    <p>or drag the folder onto this box. It's in<br><code>MarvelRivals\MarvelGame\Marvel\Content\Paks\~mods</code></p>
+  </div>
+  <p class="note">Nothing is uploaded. Your mods are read and fixed inside your browser.</p>
+  <p class="status" id="status" hidden></p>
+
+  <div class="card" id="result" hidden>
+    <div class="bar"><strong id="summary"></strong><button type="button" class="primary" id="fixall" hidden>Fix and download all</button></div>
+    <ul class="mods" id="mods"></ul>
+    <p class="note">Unzip the download into <code>~mods</code> and replace the old files when asked. Keep a copy of your old mods until the game runs.</p>
+  </div>
+</div>
+
+<script src="jszip.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+// The update the fixer ports mods to. Files older than this are assumed to be in the old layout.
+const PATCH = { version: '1.1.3984769', date: 'Oct 30', time: 1793311882 };
+
+let wasm = null;
+async function loadModfix() {
+  if (!wasm) wasm = (await WebAssembly.instantiate(await (await fetch('modfix.wasm')).arrayBuffer(), {})).instance.exports;
+  return wasm;
+}
+// Returns { error } or { materials, stale, problem, utoc?, ucas? }.
+async function runModfix(utoc, ucas, lastModified, checkOnly) {
+  const m = await loadModfix();
+  const put = buf => { const u8 = new Uint8Array(buf), p = m.alloc(u8.length); new Uint8Array(m.memory.buffer, p, u8.length).set(u8); return [p, u8.length]; };
+  const [pu, nu] = put(utoc), [pc, nc] = put(ucas);
+  const rp = m.fix_mod(pu, nu, pc, nc, lastModified < PATCH.time * 1000 ? 1 : 0, checkOnly ? 1 : 0);
+  const r = new Uint32Array(m.memory.buffer, rp, 10).slice();
+  const msg = new TextDecoder().decode(new Uint8Array(m.memory.buffer, r[1], r[2]));
+  const out = r[0] ? { error: msg } : { materials: r[3], stale: r[4], problem: r[9] ? msg : null };
+  if (!r[0] && r[6]) { out.utoc = new Uint8Array(m.memory.buffer, r[5], r[6]).slice(); out.ucas = new Uint8Array(m.memory.buffer, r[7], r[8]).slice(); }
+  m.dealloc(pu, nu); m.dealloc(pc, nc);
+  return out;
+}
+
+// ---------- reading the folder ----------
+// Each file comes with its path inside ~mods, so the fixed files unzip back to the same place.
+function fromPicker(list) {
+  return [...list].map(f => ({ file: f, path: (f.webkitRelativePath || f.name).split('/').slice(f.webkitRelativePath ? 1 : 0).join('/') }));
+}
+async function fromDrop(items) {
+  const out = [];
+  const walk = async (entry, path) => {
+    if (entry.isFile) { out.push({ file: await new Promise((ok, no) => entry.file(ok, no)), path: path + entry.name }); return; }
+    const reader = entry.createReader();
+    for (let batch; (batch = await new Promise((ok, no) => reader.readEntries(ok, no))).length;)
+      for (const e of batch) await walk(e, path + entry.name + '/');
+  };
+  // A dropped folder is ~mods itself, so paths start below it.
+  const roots = [...items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  for (const root of roots) {
+    if (root.isFile) await walk(root, '');
+    else { const reader = root.createReader();
+      for (let batch; (batch = await new Promise((ok, no) => reader.readEntries(ok, no))).length;)
+        for (const e of batch) await walk(e, ''); }
+  }
+  return out;
+}
+
+let mods = [];
+async function check(entries) {
+  const status = $('#status');
+  status.hidden = false; status.className = 'status';
+  const byStem = {};
+  for (const { file, path } of entries) {
+    const m = path.match(/^(.*)\.(utoc|ucas|pak)$/i);
+    if (m) (byStem[m[1]] ||= { path: m[1], name: m[1].split('/').pop() })[m[2].toLowerCase()] = file;
+  }
+  mods = Object.values(byStem).sort((a, b) => a.name.localeCompare(b.name));
+  if (!mods.length) { status.className = 'status err'; status.textContent = 'No mods found there. Pick the ~mods folder inside Paks.'; $('#result').hidden = true; return; }
+  for (const [i, mod] of mods.entries()) {
+    status.textContent = `Checking ${i + 1} of ${mods.length}: ${mod.name}`;
+    await tick();
+    if (!mod.utoc) { mod.state = 'skip'; mod.text = 'Plain .pak, not affected'; continue; }
+    if (!mod.ucas) { mod.state = 'err'; mod.text = 'The .ucas file is missing'; continue; }
+    const utoc = await mod.utoc.arrayBuffer();
+    if (utoc.byteLength < 144 || new DataView(utoc).getUint32(0, true) !== 0x2D3D3D2D) { mod.state = 'err'; mod.text = 'Not a readable .utoc'; continue; }
+    if (new DataView(utoc).getUint8(80) & 2) { mod.state = 'skip'; mod.text = 'Encrypted pack, can\'t be checked'; continue; }
+    try {
+      const r = await runModfix(utoc, await mod.ucas.arrayBuffer(), mod.utoc.lastModified, true);
+      if (r.error) { mod.state = 'err'; mod.text = r.error; }
+      else if (r.stale) { mod.state = 'need'; mod.text = `Needs fixing: ${r.stale} material${r.stale === 1 ? '' : 's'} in the old layout`; }
+      else if (r.materials) { mod.state = 'ok'; mod.text = 'Up to date'; }
+      else { mod.state = 'ok'; mod.text = 'No materials, not affected'; }
+      if (r.problem && mod.state !== 'err') mod.text += ` (${r.problem})`;
+    } catch (e) { mod.state = 'err'; mod.text = 'Could not be read: ' + (e.message || e); }
+  }
+  status.hidden = true;
+  render();
+}
+
+function render() {
+  const need = mods.filter(m => m.state === 'need').length;
+  $('#summary').textContent = need ? `${need} of ${mods.length} mods need fixing` : `All ${mods.length} mods are fine`;
+  $('#fixall').hidden = need < 2;
+  $('#mods').innerHTML = mods.map((m, i) => `<li><div class="name"><code>${esc(m.name)}</code><span class="st ${m.state}">${esc(m.text)}</span></div>${
+    m.state === 'need' ? `<button type="button" class="primary" data-i="${i}">Fix and download</button>` : ''}</li>`).join('');
+  $('#result').hidden = false;
+}
+
+// ---------- fixing ----------
+async function addFixed(zip, mod) {
+  const r = await runModfix(await mod.utoc.arrayBuffer(), await mod.ucas.arrayBuffer(), mod.utoc.lastModified, false);
+  if (r.error || !r.utoc) throw new Error(r.error || r.problem || 'nothing was changed');
+  zip.file(mod.path + '.utoc', r.utoc);
+  zip.file(mod.path + '.ucas', r.ucas);
+  if (mod.pak) zip.file(mod.path + '.pak', await mod.pak.arrayBuffer());
+}
+// The download allowlist has no .utoc/.ucas, so fixed mods always go out as a zip.
+async function save(zip, filename) {
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
+  const downloads = window.claude && window.claude.use ? await claude.use('downloads') : null;
+  if (window.claude && !downloads) throw new Error('Saving files is not available in this view.');
+  if (downloads) await downloads.save({ filename, data: blob });
+  else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
+}
+async function fix(list, filename) {
+  const status = $('#status'), buttons = document.querySelectorAll('#result button');
+  status.hidden = false; status.className = 'status'; buttons.forEach(b => b.disabled = true);
+  const zip = new JSZip(), done = [];
+  try {
+    for (const [i, mod] of list.entries()) {
+      status.textContent = `Fixing ${i + 1} of ${list.length}: ${mod.name}`;
+      await tick();
+      try { await addFixed(zip, mod); done.push(mod); } catch (e) { mod.state = 'err'; mod.text = 'Fix failed: ' + (e.message || e); }
+    }
+    if (!done.length) throw new Error('Nothing could be fixed.');
+    status.textContent = 'Zipping…';
+    await save(zip, filename);
+    for (const m of done) { m.state = 'ok'; m.text = 'Fixed and downloaded'; }
+    status.hidden = true;
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = e.code === 'declined' ? 'Download cancelled.' : (e.message || String(e));
+  }
+  render();
+}
+
+$('#fixall').addEventListener('click', () => fix(mods.filter(m => m.state === 'need'), 'fixed-mods.zip'));
+$('#mods').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]'); if (!b) return;
+  const mod = mods[+b.dataset.i]; fix([mod], mod.name + '-fixed.zip');
+});
+$('#folder').addEventListener('change', e => { if (e.target.files.length) check(fromPicker(e.target.files)); e.target.value = ''; });
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', async e => { e.preventDefault(); check(await fromDrop(e.dataTransfer.items)); });
+for (const el of document.querySelectorAll('.patchdate')) el.textContent = PATCH.date;
+</script>
