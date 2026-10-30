@@ -109,7 +109,6 @@ async function runModfix(utoc, ucas, lastModified, checkOnly) {
   return out;
 }
 
-// ---------- reading the folder ----------
 // Each file comes with its path inside ~mods, so the fixed files unzip back to the same place.
 function fromPicker(list) {
   return [...list].map(f => ({ file: f, path: (f.webkitRelativePath || f.name).split('/').slice(f.webkitRelativePath ? 1 : 0).join('/') }));
@@ -173,7 +172,6 @@ function render() {
   $('#result').hidden = false;
 }
 
-// ---------- fixing ----------
 async function addFixed(zip, mod) {
   const r = await runModfix(await mod.utoc.arrayBuffer(), await mod.ucas.arrayBuffer(), mod.utoc.lastModified, false);
   if (r.error || !r.utoc) throw new Error(r.error || r.problem || 'nothing was changed');

@@ -34,7 +34,6 @@ impl Oodle {
     }
 }
 
-// ---------------------------------------------------------------- main
 fn find_mods_dir(arg: Option<String>) -> Option<PathBuf> {
     if let Some(a) = arg {
         let p = PathBuf::from(a);

@@ -26,7 +26,6 @@ def load_usmap(path):
     try: return usmaplib.parse_any(tmp)
     finally: os.unlink(tmp)
 
-# ---------- unversioned property walker ----------
 NATIVE = {'Guid': 16, 'LinearColor': 16, 'Color': 4, 'Vector': 24, 'Vector3f': 12, 'Vector2D': 16, 'Vector2f': 8,
           'Vector4': 32, 'Vector4f': 16, 'IntPoint': 8, 'IntVector': 12, 'IntVector4': 16, 'Rotator': 24, 'Quat': 32,
           'Quat4f': 16, 'Transform': 80, 'Matrix': 128, 'Box': 49, 'Box2D': 33, 'BoxSphereBounds': 56, 'Plane': 32,
@@ -116,7 +115,6 @@ class Walker:
         if code == 28: return self.value(t[1], p + 4, out) if struct.unpack_from('<i', self.b, p)[0] else p + 4
         raise ValueError(f'unsupported property type {t} for {name}')
 
-# ---------- header rewrite ----------
 def shift_header(b, h0, h1, at, n):
     """Insert `n` skipped slots at schema index `at` into the unversioned header at b[h0:h1]."""
     frags = []; p = h0
@@ -141,7 +139,6 @@ def shift_header(b, h0, h1, at, n):
     hdr = b''.join(struct.pack('<H', f[0] | (0x80 if f[1] else 0) | (0x100 if f[3] else 0) | (f[2] << 9)) for f in out)
     return hdr + maskbytes
 
-# ---------- legacy (retoc unpack) package ----------
 def read_legacy(ua):
     b = open(ua, 'rb').read(); p = 0
     def i32():
@@ -230,7 +227,6 @@ def fix_dir(root, dry):
                 open(ux, 'wb').write(uexp); open(ua, 'wb').write(hdr)
     print(f'{npk} material instance packages, {nfix} exports fixed')
 
-# ---------- zen (raw IoStore) package, for checking against the game's own files ----------
 def read_zen(path):
     b = open(path, 'rb').read()
     has_ver, hsize = struct.unpack_from('<II', b, 0)

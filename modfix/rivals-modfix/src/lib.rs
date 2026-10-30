@@ -25,7 +25,6 @@ fn decrypt(buf: &mut [u8]) {
     for b in buf.chunks_exact_mut(16) { c.decrypt_block(b.into()); }
 }
 
-// ---------------------------------------------------------------- schema
 #[derive(Deserialize, Clone)]
 #[serde(tag = "t")]
 enum Ty {
@@ -61,7 +60,6 @@ fn native_size(name: &str) -> Option<usize> {
     })
 }
 
-// ---------------------------------------------------------------- unversioned walker
 struct Walker<'a> { schema: &'a Schema, b: &'a [u8], marks: Vec<(usize, usize)> /* (start,end) of STRUCT headers */ }
 
 #[derive(Debug)]
@@ -205,7 +203,6 @@ fn shift_header(b: &[u8], h0: usize, h1: usize, at: u32, n: u32) -> R<Vec<u8>> {
     Ok(hdr)
 }
 
-// ---------------------------------------------------------------- zen package
 struct ZenExport { entry: usize, off: u64, size: u64, class: u64 }
 fn zen_exports(pkg: &[u8]) -> Option<(usize, Vec<ZenExport>)> {
     if pkg.len() < 52 { return None; }
@@ -286,7 +283,6 @@ fn fix_package(pkg: &[u8], old: &Schema, new: &Schema, assume_old: bool) -> Outc
     Outcome::Fixed(fixed, data)
 }
 
-// ---------------------------------------------------------------- IoStore container
 pub struct Toc {
     pub raw: Vec<u8>, pub header_size: usize, pub ver: u8, pub flags: u8, pub cbs: usize,
     pub ids: Vec<[u8; 12]>, pub offlen: Vec<(u64, u64)>,
@@ -319,8 +315,8 @@ pub fn parse_toc(raw: Vec<u8>) -> Result<Toc, String> {
     Ok(Toc { raw, header_size: hdr, ver, flags, cbs, ids, offlen, blocks, methods_off, methods_len, dir_off, dir_len, meta_off: o })
 }
 
-/// Write a container with every chunk stored uncompressed. Only offsets, lengths, the block
-/// list and the per-chunk meta change; ids, hash seeds and the directory index are kept.
+/// Write a container with every chunk stored uncompressed and unencrypted. Only offsets, lengths,
+/// the block list and the per-chunk meta change; ids and hash seeds are kept.
 pub fn write_container(toc: &Toc, chunks: &[Vec<u8>]) -> Result<(Vec<u8>, Vec<u8>), String> {
     let cbs = toc.cbs as u64;
     let mut ucas = Vec::new();
@@ -420,7 +416,6 @@ pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
     Ok(ModResult { materials, fixed, problems, utoc: u, ucas: c })
 }
 
-// ---------------------------------------------------------------- WebAssembly entry points
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use super::*;
