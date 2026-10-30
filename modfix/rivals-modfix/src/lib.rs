@@ -315,9 +315,11 @@ pub fn parse_toc(raw: Vec<u8>) -> Result<Toc, String> {
     Ok(Toc { raw, header_size: hdr, ver, flags, cbs, ids, offlen, blocks, methods_off, methods_len, dir_off, dir_len, meta_off: o })
 }
 
-/// Write a container with every chunk stored uncompressed and unencrypted. Only offsets, lengths,
-/// the block list and the per-chunk meta change; ids and hash seeds are kept.
-pub fn write_container(toc: &Toc, chunks: &[Vec<u8>]) -> Result<(Vec<u8>, Vec<u8>), String> {
+/// Write a container unencrypted. Unchanged chunks keep their original (decrypted) blocks, so they
+/// stay compressed; changed chunks are stored uncompressed. Only offsets, lengths, the block list
+/// and the per-chunk meta change; ids and hash seeds are kept.
+pub fn write_container(toc: &Toc, chunks: &[Vec<u8>], changed: &[bool],
+                       read: &mut dyn FnMut(u64, usize) -> Result<Vec<u8>, String>) -> Result<(Vec<u8>, Vec<u8>), String> {
     let cbs = toc.cbs as u64;
     let mut ucas = Vec::new();
     let mut blocks: Vec<(u64, u32, u32, u8)> = Vec::new();
@@ -326,10 +328,20 @@ pub fn write_container(toc: &Toc, chunks: &[Vec<u8>]) -> Result<(Vec<u8>, Vec<u8
     for (i, c) in chunks.iter().enumerate() {
         let voff = blocks.len() as u64 * cbs;
         offlen.push((voff, c.len() as u64));
-        for part in c.chunks(toc.cbs) {
-            while ucas.len() % 16 != 0 { ucas.push(0); }
-            blocks.push((ucas.len() as u64, part.len() as u32, part.len() as u32, 0));
-            ucas.extend_from_slice(part);
+        let (off, len) = toc.offlen[i];
+        if !changed[i] && len > 0 && off % cbs == 0 {
+            for bi in (off / cbs) as usize..=((off + len - 1) / cbs) as usize {
+                let (raw, usz, m) = read_block(toc, bi, read)?;
+                while ucas.len() % 16 != 0 { ucas.push(0); }
+                blocks.push((ucas.len() as u64, raw.len() as u32, usz, m));
+                ucas.extend_from_slice(&raw);
+            }
+        } else {
+            for part in c.chunks(toc.cbs) {
+                while ucas.len() % 16 != 0 { ucas.push(0); }
+                blocks.push((ucas.len() as u64, part.len() as u32, part.len() as u32, 0));
+                ucas.extend_from_slice(part);
+            }
         }
         let old_meta = &toc.raw[toc.meta_off + i * 33..toc.meta_off + i * 33 + 33];
         let mut h = [0u8; 32]; h[..20].copy_from_slice(&Sha1::digest(c));
@@ -371,6 +383,16 @@ fn starts_with_fstring(b: &[u8]) -> bool {
     n > 0 && (n as usize) < b.len() - 4 && b[3 + n as usize] == 0
 }
 
+/// One block as stored, decrypted: (bytes, uncompressed size, compression method).
+fn read_block(toc: &Toc, bi: usize, read: &mut dyn FnMut(u64, usize) -> Result<Vec<u8>, String>) -> Result<(Vec<u8>, u32, u8), String> {
+    let (boff, csz, usz, m) = *toc.blocks.get(bi).ok_or("block index out of range")?;
+    let mut buf = if toc.flags & 2 != 0 {
+        let mut b = read(boff, (csz as usize + 15) & !15)?; decrypt(&mut b); b
+    } else { read(boff, csz as usize)? };
+    buf.truncate(csz as usize);
+    Ok((buf, usz, m))
+}
+
 /// One chunk of a container, decompressed. `read(offset, len)` supplies raw bytes from the .ucas,
 /// `decompress(block, raw_len)` inflates an Oodle block.
 pub fn read_chunk(toc: &Toc, ci: usize, read: &mut dyn FnMut(u64, usize) -> Result<Vec<u8>, String>,
@@ -380,11 +402,8 @@ pub fn read_chunk(toc: &Toc, ci: usize, read: &mut dyn FnMut(u64, usize) -> Resu
     let (first, last) = ((off / toc.cbs as u64) as usize, ((off + len - 1) / toc.cbs as u64) as usize);
     let mut out = Vec::with_capacity(len as usize + toc.cbs);
     for bi in first..=last {
-        let (boff, csz, usz, m) = *toc.blocks.get(bi).ok_or("block index out of range")?;
-        let buf = if toc.flags & 2 != 0 {
-            let mut b = read(boff, (csz as usize + 15) & !15)?; decrypt(&mut b); b
-        } else { read(boff, csz as usize)? };
-        if m == 0 { out.extend_from_slice(&buf[..usz as usize]); } else { out.extend(decompress(&buf[..csz as usize], usz as usize)?); }
+        let (buf, usz, m) = read_block(toc, bi, read)?;
+        if m == 0 { out.extend_from_slice(&buf[..usz as usize]); } else { out.extend(decompress(&buf, usz as usize)?); }
     }
     let s = (off % toc.cbs as u64) as usize;
     Ok(out[s..s + len as usize].to_vec())
@@ -406,12 +425,13 @@ pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
         if !header.starts_with(b"nCoI") { return Err("encrypted with a key other than the game's".into()); }
     }
     let mut chunks = Vec::with_capacity(toc.ids.len());
+    let mut changed = vec![false; toc.ids.len()];
     let (mut fixed, mut materials, mut problems) = (0usize, 0usize, Vec::new());
     for ci in 0..toc.ids.len() {
         let data = read_chunk(toc, ci, &mut read, decompress)?;
         if toc.ids[ci][11] == 1 {
             match fix_package(&data, &old, &new, assume_old) {
-                Outcome::Fixed(k, newdata) => { fixed += k; materials += k; chunks.push(newdata); continue; }
+                Outcome::Fixed(k, newdata) => { fixed += k; materials += k; chunks.push(newdata); changed[ci] = true; continue; }
                 Outcome::UpToDate(k) => materials += k,
                 Outcome::Skipped(why) => problems.push(why),
                 Outcome::NoMaterials => {}
@@ -420,7 +440,7 @@ pub fn process_mod(toc: &Toc, ucas: &[u8], assume_old: bool, check_only: bool,
         chunks.push(data);
     }
     if (fixed == 0 && !encrypted) || check_only || !problems.is_empty() { return Ok(ModResult { materials, fixed, problems, utoc: Vec::new(), ucas: Vec::new() }); }
-    let (u, c) = write_container(toc, &chunks)?;
+    let (u, c) = write_container(toc, &chunks, &changed, &mut read)?;
     Ok(ModResult { materials, fixed, problems, utoc: u, ucas: c })
 }
 

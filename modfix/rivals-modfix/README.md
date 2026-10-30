@@ -26,8 +26,9 @@ layout; a parse only counts when every property reads and the field after them i
 wrong layout almost never gives. Materials that read only with the old layout get a two-slot skip
 inserted into their `BasePropertyOverrides` header at index 40, are re-read with the new layout,
 and are only accepted if every value and the end position agree. The container is written back
-with all chunks stored uncompressed (the game reads those fine), the per-chunk hashes
-recomputed, and everything else in the TOC untouched.
+unencrypted: unchanged chunks keep their original compressed blocks, patched packages are
+stored uncompressed (the game reads those fine), the per-chunk hashes are recomputed, and
+everything else in the TOC is untouched.
 
 Materials whose override values are only bools and enums read cleanly both ways; those are
 treated as old if the mod file is dated before the update.
