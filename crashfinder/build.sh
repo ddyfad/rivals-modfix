@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 {
-  printf '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<meta name="description" content="Fix Marvel Rivals mods broken by the Oct 30 update. Pick your ~mods folder and download fixed copies.">\n'
+  printf '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<meta name="description" content="ModMend: one-click fixes for Marvel Rivals mods broken by updates. Nothing gets uploaded.">\n'
   sed -n '/^<title>/,/^<\/style>$/p' page.html
   printf '</head>\n<body>\n'
   sed '1,/^<\/style>$/d' page.html
