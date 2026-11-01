@@ -1,5 +1,6 @@
 /*
 !/.gitignore
+!/README.md
 !/modfix/
 !/crashfinder/
 *.bak*
@@ -9,3 +10,9 @@ target/
 *.wasm
 /crashfinder/dist/
 /crashfinder/patch-files.txt
+/crashfinder/*.py
+/modfix/*.py
+/modfix/*.usmap
+/modfix/README.md
+/modfix/rivals-modfix/.cargo/
+/modfix/rivals-modfix/src/main.rs
